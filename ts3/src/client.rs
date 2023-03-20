@@ -534,11 +534,20 @@ impl Client {
             .await
     }
 
-    pub async fn change_channel(&self, client_id: u64, channel_id: u64) -> Result<()> {
+    pub async fn change_channel(&self, client_id: usize, channel_id: usize) -> Result<()> {
         self.send(
             CommandBuilder::new("clientmove")
                 .arg("cid", channel_id)
                 .arg("clid", client_id)
+                .into_inner(),
+        )
+        .await?;
+        Ok(())
+    }
+    pub async fn rename(&self, nick_name: &str) -> Result<()> {
+        self.send(
+            CommandBuilder::new("clientupdate")
+                .arg("client_nickname", nick_name)
                 .into_inner(),
         )
         .await?;
@@ -581,10 +590,10 @@ pub struct ChannelInfo {
     pub channel_needed_talk_power: String,
     pub channel_order: String,
     pub channel_topic: String,
-    pub cid: u64,
+    pub cid: usize,
     pub pid: String,
     pub seconds_empty: String,
-    pub total_clients: u64,
+    pub total_clients: usize,
     pub total_clients_family: String,
 }
 
@@ -596,8 +605,8 @@ pub struct Whoami {
     pub client_database_id: String,
     pub client_origin_server_id: String,
     pub client_unique_identifier: String,
-    pub client_id: u64,
-    pub client_channel_id: u64,
+    pub client_id: usize,
+    pub client_channel_id: usize,
     pub client_login_name: String,
     pub client_nickname: String,
     pub virtualserver_id: String,
