@@ -525,8 +525,24 @@ impl Client {
     }
 
     /// Returns information about the query client connected
-    pub async fn whoami(&self) -> Result<RawResp> {
+    pub async fn whoami(&self) -> Result<Whoami> {
         self.send("whoami".to_owned()).await
+    }
+
+    pub async fn channels_full(&self) -> Result<Vec<ChannelInfo>> {
+        self.send("channellist -topic -flags -voice -limits -icon -secondsempty".to_owned())
+            .await
+    }
+
+    pub async fn change_channel(&self, client_id: u64, channel_id: u64) -> Result<()> {
+        self.send(
+            CommandBuilder::new("clientmove")
+                .arg("cid", channel_id)
+                .arg("clid", client_id)
+                .into_inner(),
+        )
+        .await?;
+        Ok(())
     }
 }
 
@@ -547,6 +563,44 @@ pub struct Version {
     pub version: String,
     pub build: u64,
     pub platform: String,
+}
+
+#[derive(Debug, Decode, Default)]
+pub struct ChannelInfo {
+    pub channel_codec: String,
+    pub channel_codec_quality: String,
+    pub channel_flag_default: String,
+    pub channel_flag_password: String,
+    pub channel_flag_permanent: String,
+    pub channel_flag_semi_permanent: String,
+    pub channel_icon_id: String,
+    pub channel_maxclients: i64,
+    pub channel_maxfamilyclients: String,
+    pub channel_name: String,
+    pub channel_needed_subscribe_power: String,
+    pub channel_needed_talk_power: String,
+    pub channel_order: String,
+    pub channel_topic: String,
+    pub cid: u64,
+    pub pid: String,
+    pub seconds_empty: String,
+    pub total_clients: u64,
+    pub total_clients_family: String,
+}
+
+#[derive(Debug, Decode, Default)]
+pub struct Whoami {
+    pub virtualserver_status: String,
+    pub virtualserver_unique_identifier: String,
+    pub virtualserver_port: String,
+    pub client_database_id: String,
+    pub client_origin_server_id: String,
+    pub client_unique_identifier: String,
+    pub client_id: u64,
+    pub client_channel_id: u64,
+    pub client_login_name: String,
+    pub client_nickname: String,
+    pub virtualserver_id: String,
 }
 
 /// RawResp contains all data returned from the server
