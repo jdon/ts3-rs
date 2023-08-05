@@ -224,6 +224,7 @@ pub struct ClientEnterView {
     pub clid: u64,
     pub client_unique_identifier: String,
     pub client_nickname: String,
+    pub client_type: u8,
 }
 
 /// Data for a `clientleftview` event.
