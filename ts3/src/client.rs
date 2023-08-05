@@ -223,8 +223,8 @@ impl Client {
             .await
         {
             Ok(_) => {
-                let resp = resp_rx.await;
-                Ok(T::decode(&resp.unwrap().unwrap()).unwrap())
+                let resp = resp_rx.await.map_err(|e| Error::Decode(Box::new(e)))??;
+                T::decode(&resp).map_err(|e| Error::Decode(e))
             }
             Err(_) => Err(Error::SendError),
         }
