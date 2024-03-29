@@ -8,10 +8,14 @@ documentation = "https://docs.rs/ts3"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/MrGunflame/ts3-rs"
 
+[features]
+default = ["client"]
+client = ["dep:tokio"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.0.2", features = [
+tokio = { version = "1.0.2", optional = true, features = [
 	"rt",
 	"rt-multi-thread",
 	"io-util",

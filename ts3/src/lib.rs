@@ -56,9 +56,12 @@
 extern crate self as ts3;
 
 pub mod client;
+#[cfg(feature = "client")]
 pub mod event;
 
+#[cfg(feature = "client")]
 pub use client::{Client, RawResp};
+#[cfg(feature = "client")]
 pub use event::EventHandler;
 pub use ts3_derive::Decode;
 

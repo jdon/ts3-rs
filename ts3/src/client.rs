@@ -4,10 +4,11 @@ use crate as ts3;
 
 pub use async_trait::async_trait;
 
-use crate::{
-    event::{EventHandler, Handler},
-    BoxError, CommandBuilder, Decode, Error, Serialize,
-};
+use crate::{BoxError, CommandBuilder, Decode, Error, Serialize};
+
+#[cfg(feature = "client")]
+use crate::event::{EventHandler, Handler};
+
 use bytes::Bytes;
 use std::{
     collections::HashMap,
@@ -18,6 +19,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+#[cfg(feature = "client")]
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpStream, ToSocketAddrs},
@@ -53,15 +55,17 @@ impl From<RawResp> for Error {
     }
 }
 
+#[cfg(feature = "client")]
 struct Cmd {
     bytes: Bytes,
     resp: oneshot::Sender<Result<Vec<u8>>>,
 }
-
+#[cfg(feature = "client")]
 pub(crate) struct ClientInner {
     pub(crate) handler: Arc<dyn EventHandler>,
 }
 
+#[cfg(feature = "client")]
 impl ClientInner {
     fn new() -> ClientInner {
         ClientInner {
@@ -72,11 +76,13 @@ impl ClientInner {
 
 /// A Client used to send commands to the serverquery interface.
 #[derive(Clone)]
+#[cfg(feature = "client")]
 pub struct Client {
     tx: mpsc::Sender<Cmd>,
     pub(crate) inner: Arc<RwLock<ClientInner>>,
 }
 
+#[cfg(feature = "client")]
 impl Client {
     /// Create a new connection
     pub async fn new<A: ToSocketAddrs>(addr: A) -> Result<Client> {
@@ -318,6 +324,7 @@ impl Serialize for TextMessageTarget {
 }
 
 // TS3 Commands go here
+#[cfg(feature = "client")]
 impl Client {
     /// Creates a new apikey using the specified scope, for the invoking user. The default
     /// lifetime of a token is 14 days, a zero lifetime means no expiration. It is possible
