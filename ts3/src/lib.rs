@@ -66,7 +66,6 @@ pub use event::EventHandler;
 pub use ts3_derive::Decode;
 
 use std::{
-    convert::TryFrom,
     error,
     fmt::{self, Debug, Display, Formatter, Write},
     io,
@@ -245,7 +244,64 @@ macro_rules! impl_decode {
     ($t:ty) => {
         impl Decode<$t> for $t {
             fn decode(buf: &[u8]) -> std::result::Result<$t, BoxError> {
-                Ok(from_utf8(buf)?.parse()?)
+                // Attempt to convert the byte buffer to a UTF-8 string.
+                let s = match from_utf8(buf) {
+                    Ok(s_val) => s_val,
+                    Err(e) => return Err(Box::new(e) as BoxError),
+                };
+
+                let mut end_idx = 0; // Tracks the end of the numeric part of the string.
+                let mut chars_iter = s.chars().peekable();
+                let mut first_char_is_sign = false;
+
+                // Check for an optional leading sign (+ or -).
+                if let Some(&ch) = chars_iter.peek() {
+                    if ch == '-' || ch == '+' {
+                        chars_iter.next(); // Consume the sign character.
+                        end_idx += 1;
+                        first_char_is_sign = true;
+                    }
+                }
+
+                let mut found_digits = false;
+                // Iterate through the string to find all consecutive ASCII digits.
+                while let Some(&ch) = chars_iter.peek() {
+                    if ch.is_ascii_digit() {
+                        chars_iter.next(); // Consume the digit character.
+                        end_idx += 1;
+                        found_digits = true;
+                    } else {
+                        // Stop if a non-digit character is encountered.
+                        break;
+                    }
+                }
+
+                // If no digits were found (and it wasn't just a sign or an empty string after sign),
+                // it's an invalid numeric string.
+                if !found_digits && (first_char_is_sign || (!s.is_empty() && end_idx == 0)) {
+                    return Err(format!(
+                        "Invalid numeric string for type <{}>: '{}'",
+                        stringify!($t),
+                        s
+                    )
+                    .into());
+                }
+
+                // Extract the parsable numeric part of the string.
+                let parsable_s = &s[0..end_idx];
+
+                // Attempt to parse the extracted string into the target numeric type.
+                match parsable_s.parse::<$t>() {
+                    Ok(val) => Ok(val),
+                    Err(e) => Err(format!(
+                        "Failed to parse '{}' as <{}>: {}. Original buffer slice: '{}'",
+                        parsable_s,
+                        stringify!($t),
+                        e,
+                        s
+                    )
+                    .into()),
+                }
             }
         }
     };
@@ -302,43 +358,52 @@ impl Decode<()> for () {
 // Implement `Decode` for `String`
 impl Decode<String> for String {
     fn decode(buf: &[u8]) -> Result<String, BoxError> {
-        // Create a new string, allocating the same length as the buffer. Most
-        // chars are one-byte only.
-        let mut string = String::with_capacity(buf.len());
+        // Pre-allocate a vector with the same capacity as the input buffer
+        // as a starting point, though unescaping might change the final length.
+        let mut unescaped_bytes = Vec::with_capacity(buf.len());
+        let mut i = 0;
+        while i < buf.len() {
+            let byte = buf[i];
+            i += 1; // Consume current byte
 
-        // Create a peekable iterator to iterate over all bytes, appending all bytes
-        // and replacing escaped chars.
-        let mut iter = buf.into_iter().peekable();
-        while let Some(b) = iter.next() {
-            match b {
-                // Match any escapes, starting with a '\' followed by another char.
+            match byte {
                 b'\\' => {
-                    match iter.peek() {
-                        Some(c) => match c {
-                            b'\\' => string.push('\\'),
-                            b'/' => string.push('/'),
-                            b's' => string.push(' '),
-                            b'p' => string.push('|'),
-                            b'a' => string.push(7u8 as char),
-                            b'b' => string.push(8u8 as char),
-                            b'f' => string.push(12u8 as char),
-                            b'n' => string.push(10u8 as char),
-                            b'r' => string.push(13u8 as char),
-                            b't' => string.push(9u8 as char),
-                            b'v' => string.push(11u8 as char),
-                            _ => return Err(Box::new(DecodeError::UnexpectedByte(**c))),
-                        },
-                        None => return Err(Box::new(DecodeError::UnexpectedEof)),
+                    // Handle escaped characters, starting with a backslash.
+                    // Corrected: Byte literal for backslash is b'\'
+                    if i >= buf.len() {
+                        // If a backslash is the last character, it's an unexpected EOF.
+                        return Err(Box::new(DecodeError::UnexpectedEof)); // Dangling backslash
                     }
-                    iter.next();
+                    let escaped_char = buf[i];
+                    i += 1; // Consume the character following the backslash.
+
+                    // Match known escape sequences.
+                    match escaped_char {
+                        b'\\' => unescaped_bytes.push(b'\\'), // Escaped backslash
+                        b'/' => unescaped_bytes.push(b'/'),   // Escaped forward slash
+                        b's' => unescaped_bytes.push(b' '),   // Space
+                        b'p' => unescaped_bytes.push(b'|'),   // Pipe (vertical bar)
+                        b'a' => unescaped_bytes.push(7u8),    // BEL (alert)
+                        b'b' => unescaped_bytes.push(8u8),    // BS (backspace)
+                        b'f' => unescaped_bytes.push(12u8),   // FF (form feed)
+                        b'n' => unescaped_bytes.push(10u8),   // LF (line feed)
+                        b'r' => unescaped_bytes.push(13u8),   // CR (carriage return)
+                        b't' => unescaped_bytes.push(9u8),    // HT (horizontal tab)
+                        b'v' => unescaped_bytes.push(11u8),   // VT (vertical tab)
+                        unknown_escape => {
+                            // If an unknown escape sequence is encountered, return an error.
+                            return Err(Box::new(DecodeError::UnexpectedByte(unknown_escape)));
+                        }
+                    }
                 }
-                _ => string.push(char::try_from(*b).unwrap()),
+                non_escape_byte => {
+                    // If the byte is not part of an escape sequence, add it directly.
+                    unescaped_bytes.push(non_escape_byte);
+                }
             }
         }
-
-        // Shrink the string to its fitting size before returning it.
-        string.shrink_to_fit();
-        Ok(string)
+        // Convert the vector of unescaped bytes to a UTF-8 String.
+        String::from_utf8(unescaped_bytes).map_err(|e| Box::new(e) as BoxError)
     }
 }
 
@@ -461,8 +526,9 @@ impl Decode<Error> for Error {
 }
 
 mod tests {
+    use crate::client::ClientInfo;
+
     use super::*;
-    use std::str::FromStr;
 
     #[test]
     fn test_vec_decode() {
@@ -508,6 +574,17 @@ mod tests {
                 items: vec![1, 2, 3, 4]
             }
         );
+    }
+
+    #[test]
+    fn test_client_info_decode() {
+        let response = r#"clid=54197 cid=20 client_database_id=37 client_nickname=🥧Gregg🌭 client_type=1\n\rerror id=0 msg=ok\n\r"#;
+        let client_info = ClientInfo::decode(response.as_bytes()).unwrap();
+        assert_eq!(client_info.client_nickname, "🥧Gregg🌭");
+        assert_eq!(client_info.client_type, 1);
+        assert_eq!(client_info.client_database_id, 37);
+        assert_eq!(client_info.cid, 20);
+        assert_eq!(client_info.clid, 54197);
     }
 
     #[test]

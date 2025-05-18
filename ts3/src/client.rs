@@ -619,6 +619,16 @@ pub struct Whoami {
     pub virtualserver_id: String,
 }
 
+#[derive(Debug, Decode, Default)]
+pub struct ClientInfo {
+    pub clid: usize,
+    pub cid: usize,
+    pub client_database_id: usize,
+    pub client_nickname: String,
+    /// 0 = normal, 1 = query
+    pub client_type: usize,
+}
+
 /// RawResp contains all data returned from the server
 /// When the items vector contains multiple entries, the server returned a list.
 /// Otherwise only a single item will be in the vector
